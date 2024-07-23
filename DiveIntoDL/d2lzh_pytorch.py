@@ -134,3 +134,11 @@ def semilogy(x_vals, y_vals, x_label, y_label, x2_vals=None, y2_vals=None, legen
         plt.semilogy(x2_vals, y2_vals, linestyle=':')
         plt.legend(legend)
 
+
+def corr2d(X, K):
+    h, w = K.shape
+    Y = torch.zeros((X.shape[0] - h + 1, X.shape[1] - w + 1))
+    for i in range(Y.shape[0]):
+        for j in range(Y.shape[1]):
+            Y[i, j] = (X[i: i + h, j: j + w] * K).sum()
+    return Y
