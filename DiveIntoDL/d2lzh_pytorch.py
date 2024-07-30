@@ -208,3 +208,59 @@ def data_iter_consecutive(corpus_indices, batch_size, num_steps, device=None):
         X = indices[:, i: i + num_steps]
         Y = indices[:, i + 1: i + num_steps + 1]
         yield X, Y
+
+
+def one_hot(x, n_class, dtype=torch.float32):
+    # X shape: (batch), output shape: (batch, n_class)
+    x = x.long()
+    res = torch.zeros(x.shape[0], n_class, dtype=dtype, device=x.device)
+    res.scatter_(1, x.view(-1, 1), 1)
+    return res
+
+
+def to_onehot(X, n_class):
+    # X shape: (batch, seq_len), output: seq_len elements of (batch,n_class)
+    return [one_hot(X[:, i], n_class) for i in range(X.shape[1])]
+
+
+def init_rnn_state(batch_size, num_hiddens, device):
+    return (torch.zeros((batch_size, num_hiddens), device=device), )
+
+
+def rnn(inputs, state, params):
+    # inputs和outputs皆为num_steps个形状为(batch_size, vocab_size)的矩阵
+    W_xh, W_hh, b_h, W_hq, b_q = params
+    H, = state
+    outputs = []
+    for X in inputs:
+        H = torch.tanh(torch.matmul(X, W_xh) + torch.matmul(H, W_hh) + b_h)
+        Y = torch.matmul(H, W_hq) + b_q
+        outputs.append(Y)
+    return outputs, (H,)
+
+
+def predict_rnn(prefix, num_chars, rnn, params, init_rnn_state, num_hiddens, vocab_size, device, idx_to_char, char_to_idx):
+    state = init_rnn_state(1, num_hiddens, device)
+    output = [char_to_idx[prefix[0]]]
+    for t in range(num_chars + len(prefix) - 1):
+        # 将上⼀时间步的输出作为当前时间步的输⼊
+        X = to_onehot(torch.tensor([[output[-1]]], device=device),
+        vocab_size)
+        # 计算输出和更新隐藏状态
+        (Y, state) = rnn(X, state, params)
+        # 下⼀个时间步的输⼊是prefix⾥的字符或者当前的最佳预测字符
+        if t < len(prefix) - 1:
+            output.append(char_to_idx[prefix[t + 1]])
+        else:
+            output.append(int(Y[0].argmax(dim=1).item()))
+    return ''.join([idx_to_char[i] for i in output])
+
+
+def grad_clipping(params, theta, device):
+    norm = torch.tensor([0.0], device=device)
+    for param in params:
+        norm += (param.grad.data ** 2).sum()
+    norm = norm.sqrt().item()
+    if norm > theta:
+        for param in params:
+            param.grad.data *= (theta / norm)
